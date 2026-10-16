@@ -10,7 +10,7 @@ import subprocess
 import uuid
 from fractions import Fraction
 
-from settings import ROOT, load_font
+from settings import ROOT, font_path, load_font
 
 
 def probe(path, packets=False):
@@ -38,21 +38,26 @@ def mp4_boxes(video):
             stream.seek(offset)
             header = stream.read(8)
             if len(header) != 8:
-                raise ValueError("Truncated MP4 box header")
+                raise ValueError("The MP4 file ends inside a box header.")
             size = int.from_bytes(header[:4], "big")
             boxes.append(header[4:8].decode("ascii"))
             header_size = 8
             if size == 1:
                 extended = stream.read(8)
                 if len(extended) != 8:
-                    raise ValueError("Truncated extended MP4 box header")
+                    raise ValueError("The MP4 file ends inside an extended box header.")
                 size, header_size = int.from_bytes(extended, "big"), 16
             if size == 0:
                 size = length - offset
             if size < header_size or offset + size > length:
-                raise ValueError("Invalid MP4 box size")
+                raise ValueError("The MP4 file has an invalid box size.")
             offset += size
     return boxes
+
+
+def is_faststart(boxes):
+    """Progressive playback needs the moov index before the media data."""
+    return "moov" in boxes and "mdat" in boxes and boxes.index("moov") < boxes.index("mdat")
 
 
 def verify_video(source, video, config, folder, original=None):
@@ -71,7 +76,7 @@ def verify_video(source, video, config, folder, original=None):
         "audio_present": a["codec_name"] == "aac",
         "duration_preserved": abs(float(info["format"]["duration"]) - float(original["format"]["duration"])) < 0.5,
         "video_and_audio_only": len(info["streams"]) == 2,
-        "faststart": "moov" in boxes and "mdat" in boxes and boxes.index("moov") < boxes.index("mdat"),
+        "faststart": is_faststart(boxes),
     }
     decode = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"], capture_output=True, encoding="utf-8")
     checks["full_decode"] = decode.returncode == 0 and not decode.stderr.strip()
@@ -84,7 +89,7 @@ def verify_video(source, video, config, folder, original=None):
     (folder / "verification.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps({"checks": checks, "size_MB": round(video.stat().st_size / 1e6, 1)}, indent=2), flush=True)
     if not all(checks.values()):
-        raise ValueError(f"Output verification failed; inspect {folder / 'verification.json'}")
+        raise ValueError(f"The output failed verification. Read {folder / 'verification.json'}.")
     return report
 
 
@@ -99,7 +104,7 @@ def validate_paths(source, subtitle, video, overwrite):
         if video == original or (video.exists() and video.samefile(original)):
             raise ValueError("The output must not replace either input file.")
     if video.exists() and not overwrite:
-        raise ValueError("Output already exists. Choose --output or use --overwrite to replace it.")
+        raise ValueError("The output file already exists. Choose another --output, or add --overwrite to replace it.")
 
 
 def encode_video(source, subtitle, video, config, folder, original=None, overwrite=False, verify_output=False, title=None):
@@ -120,7 +125,7 @@ def encode_video(source, subtitle, video, config, folder, original=None, overwri
     try:
         packets = probe(staged, packets=True).get("packets", [])
     except subprocess.CalledProcessError as error:
-        raise ValueError("FFprobe could not read the subtitle file; check its format and timestamps.") from error
+        raise ValueError("FFprobe could not read the subtitle file. Check its format and timestamps.") from error
     duration = float(original["format"]["duration"])
     spans = [(float(p.get("pts_time", "nan")), float(p.get("duration_time", 0))) for p in packets]
     if not any(math.isfinite(start) and math.isfinite(span) and span > 0 and max(0, start) < min(duration, start + span) for start, span in spans):
@@ -137,7 +142,7 @@ def encode_video(source, subtitle, video, config, folder, original=None, overwri
     for value in config.get("font_paths", {}).values():
         if value:
             fonts.mkdir(exist_ok=True)
-            path = Path(value).expanduser().resolve()
+            path = font_path(value).resolve()
             shutil.copyfile(path, fonts / (hashlib.sha256(str(path).encode()).hexdigest()[:12] + path.suffix))
     if fonts.is_dir():
         vf += ":fontsdir=fonts"
@@ -146,22 +151,26 @@ def encode_video(source, subtitle, video, config, folder, original=None, overwri
     options = config["encode"]
     # Only the reviewed episode pipeline knows the real series; standalone burns get no title.
     metadata = ["-metadata", f"title={title}"] if title else []
-    args = ["ffmpeg", "-hide_banner", "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a:0", "-vf", vf, "-c:v", options["codec"], "-preset", options["preset"], "-crf", str(options["crf"]), "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", options["audio_bitrate"], "-ac", "2", "-movflags", "+faststart", "-map_metadata", "-1", "-map_chapters", "-1", *metadata, "-metadata:s:a:0", "language=jpn", "-progress", str(folder / "encode-progress.txt"), "-stats_period", "10", "-nostats", str(partial)]
+    args = ["ffmpeg", "-hide_banner", "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a:0", "-vf", vf,
+            "-c:v", options["codec"], "-preset", options["preset"], "-crf", str(options["crf"]), "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", options["audio_bitrate"], "-ac", "2", "-movflags", "+faststart",
+            "-map_metadata", "-1", "-map_chapters", "-1", *metadata, "-metadata:s:a:0", "language=jpn",
+            "-progress", str(folder / "encode-progress.txt"), "-stats_period", "10", "-nostats", str(partial)]
     log = folder / "encode.log"
-    print(f"Burning {subtitle.name} into {video.name}...", flush=True)
+    print(f"The tool is burning {subtitle.name} into {video.name}.", flush=True)
     try:
         with log.open("w", encoding="utf-8") as stream:
             subprocess.run(args, cwd=folder, stderr=stream, check=True)
         if verify_output:
             verify_video(source, partial, config, folder, original)
         if video.exists() and not overwrite:
-            raise ValueError("Output was created by another run; choose another --output.")
+            raise ValueError("Another run created the output file. Choose another --output.")
         partial.replace(video)
     except subprocess.CalledProcessError as error:
-        raise RuntimeError(f"FFmpeg failed; inspect {log}") from error
+        raise RuntimeError(f"FFmpeg stopped with an error. Read {log}.") from error
     finally:
         partial.unlink(missing_ok=True)
-    print(f"Saved {video}: {video.stat().st_size / 1e6:.1f} MB", flush=True)
+    print(f"The tool saved {video} ({video.stat().st_size / 1e6:.1f} MB).", flush=True)
     return video
 
 
@@ -180,7 +189,8 @@ def burn(source, subtitle, config, output=None, overwrite=False):
     video = encode_video(source, subtitle, output, config, folder, overwrite=overwrite, verify_output=True)
     with video.open("rb") as stream:
         output_digest = hashlib.file_digest(stream, "sha256").hexdigest()
-    manifest = {"source": identity, "subtitle": {"path": str(subtitle), "sha256": digest}, "output": {"path": str(video), "bytes": video.stat().st_size, "sha256": output_digest}, "verification": "verification.json", "editorial_review": "Supplied subtitles used as-is; burn-in does not perform translation or linguistic review."}
+    manifest = {"source": identity, "subtitle": {"path": str(subtitle), "sha256": digest}, "output": {"path": str(video), "bytes": video.stat().st_size, "sha256": output_digest},
+                "verification": "verification.json", "editorial_review": "The tool burned the supplied subtitles without changes. Burn-in does not translate or review the text."}
     (folder / "burn-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Burn-in evidence: {folder}", flush=True)
+    print(f"The tool saved burn-in evidence in {folder}.", flush=True)
     return video

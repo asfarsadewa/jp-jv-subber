@@ -82,5 +82,29 @@ class BurnChecks(unittest.TestCase):
             self.assertFalse([arg for arg in commands[0] if "My tokusatsu series" in arg])
 
 
+def box(kind, payload=b"", size=None):
+    return (8 + len(payload) if size is None else size).to_bytes(4, "big") + kind + payload
+
+
+class Mp4BoxChecks(unittest.TestCase):
+    def boxes(self, content):
+        with tempfile.TemporaryDirectory() as folder:
+            video = Path(folder) / "video.mp4"
+            video.write_bytes(content)
+            return burn.mp4_boxes(video)
+
+    def test_reads_top_level_boxes_and_faststart_order(self):
+        extended = (1).to_bytes(4, "big") + b"free" + (24).to_bytes(8, "big") + b"\0" * 8
+        boxes = self.boxes(box(b"ftyp", b"isom") + box(b"moov", b"\0" * 4) + extended + box(b"mdat", b"data", size=0))
+        self.assertEqual(boxes, ["ftyp", "moov", "free", "mdat"])
+        self.assertTrue(burn.is_faststart(boxes))
+        self.assertFalse(burn.is_faststart(["ftyp", "mdat", "moov"]))
+
+    def test_rejects_truncated_or_invalid_boxes(self):
+        for content, message in [(box(b"ftyp") + b"\0\0\0", "ends inside a box header"), (box(b"ftyp", size=4), "invalid box size"), (box(b"ftyp", size=64), "invalid box size")]:
+            with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                self.boxes(content)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -29,19 +29,19 @@ def check_preview(content):
     """The approved README image is the only binary publication exception."""
     with Image.open(io.BytesIO(content)) as preview:
         if preview.format != "JPEG" or preview.size != (1280, 600):
-            raise ValueError("unexpected preview format or dimensions")
+            raise ValueError("The preview has an unexpected format or size.")
         if preview.getexif() or set(preview.info) - {"jfif", "jfif_version", "jfif_unit", "jfif_density"}:
-            raise ValueError("preview contains unexpected metadata")
+            raise ValueError("The preview contains unexpected metadata.")
         preview.verify()
 
 
 def main():
     if subprocess.run(["git", "diff", "--quiet", "--exit-code"], cwd=ROOT).returncode:
-        raise ValueError("Tracked working files differ from the index; stage the reviewed version before auditing.")
+        raise ValueError("Tracked files differ from the index. Stage the reviewed version before you run the audit.")
     names = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT).decode("utf-8").split("\0")
     paths = sorted(name for name in names if name)
     if not paths:
-        raise ValueError("No tracked files to audit; stage the explicit intended include set first.")
+        raise ValueError("Git tracks no files. Stage the intended include set before you run the audit.")
     findings, manifest = [], {}
     secrets = {name: value for name, value in os.environ.items() if re.search(r"KEY|TOKEN|SECRET|PASSWORD", name, re.I) and len(value) >= 16}
     patterns = {
