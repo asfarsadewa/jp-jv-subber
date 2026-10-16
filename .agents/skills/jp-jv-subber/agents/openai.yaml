@@ -1,4 +1,4 @@
 interface:
-  display_name: "Japanese to Javanese Subber"
+  display_name: "Japanese to Javanese subber"
   short_description: "Produce reviewed Javanese subtitles and 480p video"
-  default_prompt: "Use $jp-jv-subber to subtitle the selected Japanese episode in Javanese and save a verified 480p MP4 in subbed/."
+  default_prompt: "Use $jp-jv-subber to subtitle the selected Japanese episode in Javanese. Save a verified 480p MP4 in subbed/."
