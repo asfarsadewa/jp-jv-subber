@@ -21,8 +21,9 @@ from PIL import Image, ImageDraw, ImageFont
 from settings import DEFAULTS, ROOT, load_font, merge_config
 from burn_subtitles import dimensions, encode_video, verify_video
 
-CONFIG_PATH = Path(os.environ.get("SUBBER_PROJECT", ROOT / "project.json")).resolve()
-CONFIG = merge_config(json.loads(CONFIG_PATH.read_text(encoding="utf-8"))) if CONFIG_PATH.exists() else merge_config({})
+# Repository defaults until configure() selects an episode; importing reads no local config.
+CONFIG_PATH = ROOT / "project.json"
+CONFIG = merge_config({})
 WORK = ROOT / "work" / CONFIG["slug"]
 OUT = ROOT / "subbed"
 
@@ -91,8 +92,10 @@ def source_file(value=None):
         return Path(read_json(remembered)["path"])
     folders = [ROOT, ROOT / "input"]
     files = [p for folder in folders if folder.is_dir() for p in folder.iterdir() if p.suffix.lower() in {".mkv", ".mp4", ".avi", ".mov", ".webm"}]
-    if len(files) != 1:
-        raise ValueError("Use --source when the project has more than one source video.")
+    if not files:
+        raise ValueError("The repository root and input/ contain no source video. Use --source to choose a video.")
+    if len(files) > 1:
+        raise ValueError("The repository root and input/ contain more than one source video. Use --source to choose one.")
     return files[0]
 
 
@@ -279,6 +282,8 @@ def llm(label, model, instructions, payload, schema, images=(), effort=None):
     headers = {"Authorization": "Bearer " + api_key("OPENAI_API_KEY")}
     if receipt.exists():
         state = read_json(receipt)
+        if state.get("status") == "failed":
+            raise RuntimeError(f"The earlier {label} request failed with HTTP {state.get('http_status')}. Read {receipt.name}. Archive that receipt before you retry.")
         if not state.get("id"):
             raise RuntimeError(f"Unknown outcome for {label}; inspect {receipt.name} before retrying.")
         response = requests.get("https://api.openai.com/v1/responses/" + state["id"], headers=headers, timeout=90)
@@ -303,12 +308,18 @@ def llm(label, model, instructions, payload, schema, images=(), effort=None):
         if data["status"] != last_status:
             print(f"{label}: {data['status']}", flush=True)
             last_status = data["status"]
-    write_json(prefix.with_suffix(".response.json"), data)
+    response_path = prefix.with_suffix(".response.json")
+    write_json(response_path, data)
     write_json(receipt, {"id": data["id"], "status": data["status"], "model": model, "finished_at": time.time()})
     if data["status"] != "completed":
         raise RuntimeError(f"{label} ended {data['status']}; saved response contains diagnostics.")
     chunks = [part["text"] for item in data.get("output", []) if item.get("type") == "message" for part in item.get("content", []) if part.get("type") == "output_text"]
-    parsed = json.loads("".join(chunks))
+    if not chunks:
+        raise RuntimeError(f"The model returned no output text for {label}. Read {response_path.name} for a refusal or other diagnostics.")
+    try:
+        parsed = json.loads("".join(chunks))
+    except json.JSONDecodeError as error:
+        raise RuntimeError(f"The model returned invalid JSON for {label}. Read {response_path.name}.") from error
     write_json(result_path, parsed)
     print(f"{label}: saved; usage {data.get('usage', {}).get('total_tokens', '?')} tokens", flush=True)
     return parsed
@@ -384,7 +395,7 @@ def review_translation():
     check_ids(drafts, units)
     schema = obj({"overall_note": STR, "units": arr(obj({"id": INT, "jv": STR, "english_gloss": STR, "change_reason": STR, "uncertainty": STR}))})
     prompt = (ROOT / "prompts" / "translation-review.txt").read_text(encoding="utf-8")
-    payload = {"register": CONFIG["register"], "episode_context": reviewed["episode_context"], "glossary": reviewed["glossary"], "units": [{**u, "draft": d} for u, d in zip(units, drafts)], "subtitle_policy": CONFIG["subtitle"]}
+    payload = {"register": CONFIG["register"], "episode_context": reviewed["episode_context"], "glossary": reviewed["glossary"], "units": [{**{k: v for k, v in u.items() if k != "word_indices"}, "draft": d} for u, d in zip(units, drafts)], "subtitle_policy": CONFIG["subtitle"]}
     result = llm("translation-review", CONFIG["review_model"], prompt, payload, schema)
     check_ids(result["units"], units)
     write_json(WORK / "translation-reviewed.json", result)
@@ -456,6 +467,9 @@ def layout():
     if edits.get("episode", CONFIG["slug"]) != CONFIG["slug"]:
         raise ValueError("Subtitle overrides belong to a different episode; archive them before changing the slug.")
     text_edits = {u["id"]: u for u in edits.get("units", [])}
+    unknown = sorted(set(text_edits) - {t["id"] for t in translations}, key=str)
+    if unknown:
+        raise ValueError(f"Subtitle overrides contain unknown utterance IDs: {', '.join(map(str, unknown))}.")
     items = []
     translations = [{**t, **text_edits.get(t["id"], {})} for t in translations]
     for u, t in zip(units, translations):
@@ -598,7 +612,8 @@ def encode(source):
         raise ValueError("Resolve subtitle QA issues before encoding; see subtitle-qa.json.")
     subtitle = OUT / (CONFIG["slug"] + ".jv.ass")
     video = OUT / (CONFIG["slug"] + ".jv.480p.mp4")
-    encode_video(source, subtitle, video, CONFIG, WORK, original, overwrite=True)
+    # Verify the candidate first; a failed encode keeps the previous deliverable.
+    encode_video(source, subtitle, video, CONFIG, WORK, original, overwrite=True, verify_output=True, title=f"{CONFIG['series']} {CONFIG['episode']} - Javanese")
 
 
 def verify(source):
@@ -715,11 +730,23 @@ def main():
         globals()[args.stage](source_file(args.source))
 
 
-if __name__ == "__main__":
+def describe_error(error):
+    if isinstance(error, subprocess.CalledProcessError):
+        detail = error.stderr.strip().splitlines()[-3:] if isinstance(error.stderr, str) else []
+        return "\n".join([f"{Path(str(error.cmd[0])).name} stopped with exit status {error.returncode}.", *detail])
+    return str(error)
+
+
+def run_cli(entry, *args):
+    """Report expected failures in one message; programming errors keep their traceback."""
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     try:
-        main()
-    except (ValueError, RuntimeError, FileNotFoundError, KeyError) as error:
-        print(f"Error: {error}", file=sys.stderr)
+        entry(*args)
+    except (ValueError, RuntimeError, OSError, requests.RequestException, subprocess.CalledProcessError) as error:
+        print(f"Error: {describe_error(error)}", file=sys.stderr)
         raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    run_cli(main)

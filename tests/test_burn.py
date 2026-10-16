@@ -60,6 +60,27 @@ class BurnChecks(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b"previous good deliverable")
             self.assertEqual(list(root.glob("*.partial.mp4")), [])
 
+    def test_standalone_burn_writes_no_placeholder_title(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source, subtitle, output = [root / name for name in ["source.mkv", "captions.ass", "output.mp4"]]
+            source.write_bytes(b"fixture")
+            subtitle.write_text("fixture", encoding="utf-8")
+            info = {"streams": [{"codec_type": "video", "width": 640, "height": 480}, {"codec_type": "audio"}], "format": {"duration": "6"}}
+            commands = []
+
+            def fake_probe(path, packets=False):
+                return {"packets": [{"pts_time": "1", "duration_time": "2"}]} if packets else info
+
+            def fake_encode(args, **kwargs):
+                commands.append(args)
+                Path(args[-1]).write_bytes(b"candidate")
+
+            with patch.object(burn, "ROOT", root), patch.object(burn, "probe", side_effect=fake_probe), patch.object(burn.subprocess, "run", side_effect=fake_encode), patch.object(burn, "verify_video"):
+                burn.burn(source, subtitle, merge_config({}), output)
+            self.assertFalse([arg for arg in commands[0] if arg.startswith("title=")])
+            self.assertFalse([arg for arg in commands[0] if "My tokusatsu series" in arg])
+
 
 if __name__ == "__main__":
     unittest.main()

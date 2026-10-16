@@ -102,7 +102,7 @@ def validate_paths(source, subtitle, video, overwrite):
         raise ValueError("Output already exists. Choose --output or use --overwrite to replace it.")
 
 
-def encode_video(source, subtitle, video, config, folder, original=None, overwrite=False, verify_output=False):
+def encode_video(source, subtitle, video, config, folder, original=None, overwrite=False, verify_output=False, title=None):
     source, subtitle, video = (Path(p).expanduser().resolve() for p in (source, subtitle, video))
     validate_paths(source, subtitle, video, overwrite)
     original = original or probe(source)
@@ -144,7 +144,9 @@ def encode_video(source, subtitle, video, config, folder, original=None, overwri
     video.parent.mkdir(parents=True, exist_ok=True)
     partial = video.with_name(video.stem + "." + uuid.uuid4().hex[:10] + ".partial.mp4")
     options = config["encode"]
-    args = ["ffmpeg", "-hide_banner", "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a:0", "-vf", vf, "-c:v", options["codec"], "-preset", options["preset"], "-crf", str(options["crf"]), "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", options["audio_bitrate"], "-ac", "2", "-movflags", "+faststart", "-map_metadata", "-1", "-map_chapters", "-1", "-metadata", f"title={config['series']} {config['episode']} - Javanese", "-metadata:s:a:0", "language=jpn", "-progress", str(folder / "encode-progress.txt"), "-stats_period", "10", "-nostats", str(partial)]
+    # Only the reviewed episode pipeline knows the real series; standalone burns get no title.
+    metadata = ["-metadata", f"title={title}"] if title else []
+    args = ["ffmpeg", "-hide_banner", "-y", "-i", str(source), "-map", "0:v:0", "-map", "0:a:0", "-vf", vf, "-c:v", options["codec"], "-preset", options["preset"], "-crf", str(options["crf"]), "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", options["audio_bitrate"], "-ac", "2", "-movflags", "+faststart", "-map_metadata", "-1", "-map_chapters", "-1", *metadata, "-metadata:s:a:0", "language=jpn", "-progress", str(folder / "encode-progress.txt"), "-stats_period", "10", "-nostats", str(partial)]
     log = folder / "encode.log"
     print(f"Burning {subtitle.name} into {video.name}...", flush=True)
     try:

@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw, ImageOps
 
 import subtitle as pipeline
 from settings import load_font
-from subtitle import read_json, run, timestamp
+from subtitle import read_json, run, run_cli, timestamp
 
 
 def main(argv=None):
@@ -46,4 +46,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

@@ -4,13 +4,12 @@ import base64
 import json
 import os
 from pathlib import Path
-import sys
 import time
 
 import requests
 
 import subtitle as pipeline
-from subtitle import source_file, run, write_json, read_json, claim_request, api_key
+from subtitle import source_file, run, write_json, read_json, claim_request, api_key, run_cli
 
 
 def main():
@@ -82,5 +81,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(encoding="utf-8")
-    main()
+    run_cli(main)

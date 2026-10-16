@@ -11,6 +11,7 @@ from unittest.mock import patch
 from PIL import Image
 
 import subtitle as p
+from burn_subtitles import probe
 from settings import merge_config
 
 
@@ -46,6 +47,9 @@ def one_case(anamorphic=False):
     p.layout()
     p.encode(source)
     p.verify(source)
+    title = probe(p.OUT / f"{slug}.jv.480p.mp4")["format"].get("tags", {}).get("title")
+    if title != "Synthetic test test - Javanese":
+        raise ValueError(f"The episode MP4 has an unexpected title: {title}")
     from check_exports import main as check_exports
     from render_samples import main as render_samples
     check_exports(["--project", str(config_path)])
@@ -67,6 +71,8 @@ def one_case(anamorphic=False):
             raise ValueError(f"Standalone {extension} burn failed:\n{result.stdout}\n{result.stderr}")
         if subtitle.read_bytes() != before:
             raise ValueError("Burning changed the original subtitle file")
+        if "title" in probe(output)["format"].get("tags", {}):
+            raise ValueError(f"The standalone {extension} burn wrote a title from the default config.")
         preview = folder / "visual-qa" / f"standalone-{extension}.png"
         p.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "1", "-i", output, "-frames:v", "1", preview], capture_output=True)
         with Image.open(preview) as image:

@@ -6,7 +6,7 @@ import html
 import json
 
 import subtitle as pipeline
-from subtitle import read_json, write_json, timestamp, ass_timestamp
+from subtitle import read_json, write_json, timestamp, ass_timestamp, run_cli
 from burn_subtitles import mp4_boxes
 
 
@@ -55,4 +55,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    run_cli(main)

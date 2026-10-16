@@ -75,6 +75,8 @@ python tools/check_exports.py
 python tools/render_samples.py
 ```
 
+`encode` verifies the new MP4 before it replaces an earlier export. If verification fails, the earlier export stays in `subbed/`.
+
 Defaults: original display aspect at 480 pixels high, original frame rate, 8-bit H.264 CRF 27/slow, 64 kb/s Japanese AAC and fast-start MP4. Inherited chapter references are removed to avoid broken QuickTime chapter tracks. Font measurement and ASS use the same available family. Song subtitles use the top of the frame.
 
 Outputs: `subbed/<slug>.jv.480p.mp4`, `.jv.srt`, `.jv.vtt`, `.jv.ass` and `.review.tsv`. `verification.json` records complete decode and geometry/audio/timing checks; `deliverable-manifest.json` records export parity and hashes. `visual-qa/` contains actual burned frames. Open them and check clipping, contrast, names, longest lines, dialogue and songs. Inspect problem passages in local video/audio tools when timing remains doubtful.
