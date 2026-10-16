@@ -1,6 +1,6 @@
 ---
 name: jp-jv-subber
-description: Produce and revise Javanese subtitles for Japanese tokusatsu with reviewed transcripts, contextual translation, readable SRT/VTT/ASS and a verified 480p burned-in video. Use for this repository's episode processing, source corrections, subtitle edits, encoding and pipeline maintenance.
+description: Produce and revise Javanese subtitles for Japanese tokusatsu, or burn existing ASS/SRT/VTT subtitles into a verified 480p video. Use for this repository's episode processing, source corrections, subtitle edits, hardsubs, encoding and pipeline maintenance.
 ---
 
 # Japanese to Javanese subtitling
@@ -9,6 +9,7 @@ Work from the repository root containing `tools/subtitle.py` and `project.exampl
 
 ## Begin or resume
 
+- For an existing subtitle file that only needs hardsubs, use `python tools/subtitle.py burn --source "input/episode.mkv" --subtitles "captions.jv.ass"`. No config or provider keys are required. Optional `--output` selects the MP4; an existing destination requires `--overwrite`. This mode uses supplied wording/timing as-is and does not establish editorial approval. Read the runbook's burn section for settings and evidence, then inspect actual burned frames.
 - Identify the source and local config. Preserve an existing episode's slug, settings, overrides and caches. For a new episode, use `init` with a unique slug. Several episode configs can live under ignored `local/` directories.
 - Run `doctor` and `status` with that config. Doctor is offline unless `--check-models` is requested. Keys come from environment variables; never print them.
 - Resume the smallest necessary stage. Do not run `all` merely to refresh a finished episode. Check raw artifacts and API receipts before any new paid request.
@@ -34,4 +35,4 @@ Save MP4, SRT/VTT/ASS and bilingual TSV in `subbed/`; keep provenance in `work/<
 - Source changes require downstream source/translation review. Javanese wording/layout edits usually need only layout, encode, verify, export checks and rendered inspection.
 - Account model access varies. Check configured IDs against current official docs/access rather than inventing replacements. Record an agreed change in the local config.
 - For code changes, run `python tools/verify_project.py`. Its generated tones/backgrounds and hand-authored captions test mechanics without credentials or copyright media; they do not establish ASR or linguistic accuracy.
-- Publish only within an authorized request. Follow [release checks](../../../docs/release.md). Local configs, episode overrides, media, transcripts, outputs, frames, API receipts and credentials stay outside the tracked include set.
+- Publish only within an authorized request. Follow [release checks](../../../docs/release.md). Local configs, episode overrides, media, transcripts, outputs, frames, API receipts and credentials stay outside the tracked include set. The explicitly approved `docs/assets/zaborger-javanese.jpg` README preview is the sole media exception; this does not authorize sharing further episode material.

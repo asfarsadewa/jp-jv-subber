@@ -2,7 +2,7 @@
 
 Publishing requires an explicit request for the destination. Normal subtitling does not authorize a push or sharing media.
 
-Tracked files are limited to tooling, prompts, local skill/instructions, docs, config examples, dependencies, CI and tests. Local settings/overrides, local/input/work/subbed directories, media, subtitles and credentials stay untracked. The Git index and commit tree are authoritative.
+Tracked files are limited to tooling, prompts, local skill/instructions, docs, config examples, dependencies, CI and tests, plus the explicitly approved `docs/assets/zaborger-javanese.jpg` README preview. That exact-path exception contains two actual burned frames from the completed local Zaborger export; it does not extend to full media, transcripts, subtitles or further frames. Local settings/overrides, local/input/work/subbed directories and credentials stay untracked. The Git index and commit tree are authoritative.
 
 ```sh
 python tools/verify_project.py
@@ -11,7 +11,7 @@ git diff --cached --stat
 git diff --cached
 ```
 
-Stage an explicit reviewed list. The audit checks allowed paths, tracked content, credential/personal-path patterns and matches to current environment secrets. Failures print paths or variable names, never values.
+Stage an explicit reviewed list. The audit checks allowed paths, tracked content, credential/personal-path patterns and matches to current environment secrets. Its sole binary exception must be a JPEG preview of bounded size with no EXIF or comment metadata. Inspect that preview visually before publication. Failures print paths or variable names, never values.
 
 Run [Gitleaks](https://github.com/gitleaks/gitleaks) with redaction against the intended public history:
 

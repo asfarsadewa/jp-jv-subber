@@ -66,6 +66,8 @@ After Japanese meaning changes, rerun translation and review before layout. Afte
 
 ## Encode and prove the result
 
+`layout` produces editable subtitle files. `encode` burns the reviewed ASS into the final video:
+
 ```sh
 python tools/subtitle.py encode
 python tools/subtitle.py verify
@@ -78,6 +80,19 @@ Defaults: original display aspect at 480 pixels high, original frame rate, 8-bit
 Outputs: `subbed/<slug>.jv.480p.mp4`, `.jv.srt`, `.jv.vtt`, `.jv.ass` and `.review.tsv`. `verification.json` records complete decode and geometry/audio/timing checks; `deliverable-manifest.json` records export parity and hashes. `visual-qa/` contains actual burned frames. Open them and check clipping, contrast, names, longest lines, dialogue and songs. Inspect problem passages in local video/audio tools when timing remains doubtful.
 
 All runs the sequence and emits evidence but does not replace editorial or visual inspection. Fix failed gates rather than disabling them. Report remaining dialogue doubts honestly.
+
+## Burn an existing subtitle file
+
+For an existing ASS, SRT or VTT file, use the local-only `burn` stage. This also works in a fresh checkout with no `project.json` or provider credentials:
+
+```sh
+python tools/subtitle.py burn --source "input/episode.mkv" --subtitles "subbed/episode-01.jv.ass"
+python tools/subtitle.py burn --source "input/episode.mkv" --subtitles "captions.jv.srt" --output "subbed/episode-01.jv.480p.mp4" --overwrite
+```
+
+The default output is `subbed/<subtitle-stem>.480p.mp4`. Relative paths are resolved from the repository root. Optional `--project` selects encoding/font settings; otherwise an existing default config is used when present, or the repository defaults. Use UTF-8 subtitle files. ASS styles and placement are retained; SRT/VTT receive a white, outlined style. This stage does not alter or translate the supplied subtitles or read transcription/review caches. Encoding rejects subtitle files with no timed cues overlapping the video.
+
+Existing outputs require `--overwrite`; neither input can be the destination. A verified temporary MP4 replaces the destination only after full decoding, geometry, frame-rate, AAC and fast-start checks pass. Failed exports leave an earlier destination intact. The same encoder is used by the reviewed episode pipeline. Evidence lives in `work/burns/<job-id>/`: `encode.log`, progress, `verification.json`, subtitle staging and `burn-manifest.json` with input identity and subtitle/output hashes. Burn-in verification proves media mechanics; inspect actual frames and synchronization separately.
 
 ## Resume paid jobs safely
 

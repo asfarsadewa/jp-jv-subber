@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import subprocess
+import sys
 import uuid
 from unittest.mock import patch
 
@@ -16,7 +18,7 @@ def one_case(anamorphic=False):
     slug = "offline-smoke-" + uuid.uuid4().hex[:10]
     folder = p.ROOT / "work" / slug
     folder.mkdir(parents=True)
-    source = folder / "synthetic.mkv"
+    source = folder / "synthetic episode's, [日本語].mkv"
     metadata = folder / "chapters.ffmeta"
     metadata.write_text(";FFMETADATA1\n[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=6000\ntitle=Synthetic test\n", encoding="utf-8")
     size, sar = ("720x480", "32/27") if anamorphic else ("640x480", "1")
@@ -52,7 +54,27 @@ def one_case(anamorphic=False):
         bottom = image.convert("L").crop((0, image.height-100, image.width, image.height))
         if sum(bottom.histogram()[211:]) < 100:
             raise ValueError("Burned subtitle pixels were not found in the actual encoded frame.")
-    p.write_json(folder / "offline-proof.json", {"network_disabled": True, "synthetic_only": True, "subtitle_pixels_detected": True, "anamorphic": anamorphic})
+    # The public burn command must work without any episode config or API keys,
+    # accept awkward input paths, and put real subtitle pixels into the MP4.
+    for extension in ["ass", "srt", "vtt"]:
+        subtitle = folder / f"captions 'ngoko', [日本語].{extension}"
+        before = (p.OUT / f"{slug}.jv.{extension}").read_bytes()
+        subtitle.write_bytes(before)
+        output = p.OUT / f"standalone-{extension}.mp4"
+        env = {**os.environ, "SUBBER_PROJECT": str(folder / "absent-project.json")}
+        result = subprocess.run([sys.executable, str(p.ROOT / "tools/subtitle.py"), "burn", "--source", str(source), "--subtitles", str(subtitle), "--output", str(output)], env=env, capture_output=True, encoding="utf-8")
+        if result.returncode:
+            raise ValueError(f"Standalone {extension} burn failed:\n{result.stdout}\n{result.stderr}")
+        if subtitle.read_bytes() != before:
+            raise ValueError("Burning changed the original subtitle file")
+        preview = folder / "visual-qa" / f"standalone-{extension}.png"
+        p.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "1", "-i", output, "-frames:v", "1", preview], capture_output=True)
+        with Image.open(preview) as image:
+            bottom = image.convert("L").crop((0, image.height - 100, image.width, image.height))
+            if sum(bottom.histogram()[211:]) < 100:
+                raise ValueError(f"Standalone {extension} burn has no visible subtitle pixels")
+        print(f"Standalone {extension.upper()} burn, complete decode and visible subtitle check passed.")
+    p.write_json(folder / "offline-proof.json", {"network_disabled": True, "synthetic_only": True, "subtitle_pixels_detected": True, "standalone_burn_formats": ["ass", "srt", "vtt"], "anamorphic": anamorphic})
     print(f"Offline integration passed ({'anamorphic 16:9' if anamorphic else '4:3'}): {folder}")
 
 

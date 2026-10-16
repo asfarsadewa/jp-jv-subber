@@ -15,11 +15,11 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from fractions import Fraction
 
 import requests
 from PIL import Image, ImageDraw, ImageFont
 from settings import DEFAULTS, ROOT, load_font, merge_config
+from burn_subtitles import dimensions, encode_video, verify_video
 
 CONFIG_PATH = Path(os.environ.get("SUBBER_PROJECT", ROOT / "project.json")).resolve()
 CONFIG = merge_config(json.loads(CONFIG_PATH.read_text(encoding="utf-8"))) if CONFIG_PATH.exists() else merge_config({})
@@ -44,13 +44,7 @@ def ensure_workspace():
 def output_dimensions(info=None):
     if info is None:
         info = read_json(WORK / "probe.json") if (WORK / "probe.json").exists() else {"streams": [{"codec_type": "video", "width": 640, "height": 480}]}
-    stream = next(s for s in info["streams"] if s["codec_type"] == "video")
-    sar = stream.get("sample_aspect_ratio", "1:1")
-    sar = Fraction(sar.replace(":", "/")) if sar not in {"0:1", "N/A"} else Fraction(1)
-    ratio = Fraction(stream["width"], stream["height"]) * sar
-    height = CONFIG["encode"]["height"]
-    width = max(2, round(float(ratio) * height / 2) * 2)
-    return width, height
+    return dimensions(info, CONFIG)
 
 
 def write_json(path, data):
@@ -597,49 +591,22 @@ def validate_cues(cues):
 
 
 def encode(source):
-    inspect(source)
+    original = inspect(source)
     cues = read_json(WORK / "cues.json")
     issues = validate_cues(cues)
     if issues:
         raise ValueError("Resolve subtitle QA issues before encoding; see subtitle-qa.json.")
     subtitle = OUT / (CONFIG["slug"] + ".jv.ass")
     video = OUT / (CONFIG["slug"] + ".jv.480p.mp4")
-    partial = video.with_suffix(".partial.mp4")
-    log = WORK / "encode.log"
-    options = CONFIG["encode"]
-    # The path is built from a validated slug; source paths never enter filter syntax.
-    relative = subtitle.relative_to(ROOT).as_posix()
-    width, height = output_dimensions()
-    vf = f"scale={width}:{height}:flags=lanczos,setsar=1,format=yuv420p,ass=filename='{relative}'"
-    args = ["ffmpeg", "-hide_banner", "-y", "-i", source, "-map", "0:v:0", "-map", "0:a:0", "-vf", vf, "-c:v", options["codec"], "-preset", options["preset"], "-crf", options["crf"], "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", options["audio_bitrate"], "-ac", "2", "-movflags", "+faststart", "-map_metadata", "-1", "-map_chapters", "-1", "-metadata", f"title={CONFIG['series']} {CONFIG['episode']} - Javanese", "-metadata:s:a:0", "language=jpn", "-progress", str(WORK / "encode-progress.txt"), "-stats_period", "10", "-nostats", partial]
-    print(f"Encoding {video.name}...", flush=True)
-    with log.open("w", encoding="utf-8") as f:
-        run(args, cwd=ROOT, stderr=f)
-    partial.replace(video)
-    print(f"Saved {video.name}: {video.stat().st_size / 1e6:.1f} MB", flush=True)
+    encode_video(source, subtitle, video, CONFIG, WORK, original, overwrite=True)
 
 
 def verify(source):
     original = inspect(source)
     video = OUT / (CONFIG["slug"] + ".jv.480p.mp4")
-    info = json.loads(run(["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", video], capture_output=True, encoding="utf-8").stdout)
-    v = next(s for s in info["streams"] if s["codec_type"] == "video")
-    a = next(s for s in info["streams"] if s["codec_type"] == "audio")
-    original_video = next(s for s in original["streams"] if s["codec_type"] == "video")
-    expected_width, expected_height = output_dimensions(original)
-    checks = {"height_480": v["height"] == expected_height == 480, "h264_8bit": v["codec_name"] == "h264" and v["pix_fmt"] == "yuv420p", "display_aspect_preserved": v["width"] == expected_width and v.get("sample_aspect_ratio") == "1:1", "frame_rate_preserved": Fraction(v["r_frame_rate"]) == Fraction(original_video["r_frame_rate"]), "audio_present": a["codec_name"] == "aac", "duration_preserved": abs(float(info["format"]["duration"]) - float(original["format"]["duration"])) < 0.5}
-    # Decode the complete deliverable, not just its header.
-    decode = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"], capture_output=True, encoding="utf-8")
-    checks["full_decode"] = decode.returncode == 0 and not decode.stderr.strip()
-    if decode.stderr:
-        (WORK / "decode-errors.log").write_text(decode.stderr, encoding="utf-8")
-    else:
-        (WORK / "decode-errors.log").unlink(missing_ok=True)
-    report = {"checks": checks, "size_bytes": video.stat().st_size, "source_bytes": source.stat().st_size, "duration": info["format"]["duration"], "output_probe": info, "subtitle_qa": read_json(WORK / "subtitle-qa.json")}
+    report = verify_video(source, video, CONFIG, WORK, original)
+    report["subtitle_qa"] = read_json(WORK / "subtitle-qa.json")
     write_json(WORK / "verification.json", report)
-    print(json.dumps({"checks": checks, "size_MB": round(video.stat().st_size/1e6, 1)}, indent=2), flush=True)
-    if not all(checks.values()):
-        raise ValueError("Output verification failed.")
 
 
 def doctor(check_models=False):
@@ -647,7 +614,7 @@ def doctor(check_models=False):
     if checks["ffmpeg"]:
         filters = run(["ffmpeg", "-hide_banner", "-filters"], capture_output=True, encoding="utf-8").stdout
         encoders = run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, encoding="utf-8").stdout
-        checks["libass"] = bool(re.search(r"\bass\s", filters))
+        checks["libass"] = bool(re.search(r"\bsubtitles\s", filters))
         checks["encoders"] = all(re.search(r"\b"+name+r"\s", encoders) for name in ["libx264", "aac", "flac", "libmp3lame"])
     try:
         checks["fonts"] = bool(load_font(CONFIG, 18) and load_font(CONFIG, 26, bold=True))
@@ -689,15 +656,26 @@ def status():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("stage", choices=["init", "doctor", "status", "all", "prepare", "transcribe", "segment", "crosscheck", "source-review", "translate", "review-translation", "layout", "encode", "verify"])
+    parser.add_argument("stage", choices=["init", "doctor", "status", "all", "prepare", "transcribe", "segment", "crosscheck", "source-review", "translate", "review-translation", "layout", "encode", "verify", "burn"])
     parser.add_argument("--project", help="Local config path; defaults to project.json or SUBBER_PROJECT")
     parser.add_argument("--source")
     parser.add_argument("--slug")
     parser.add_argument("--series")
     parser.add_argument("--episode")
+    parser.add_argument("--subtitles", help="burn: existing UTF-8 ASS, SRT or VTT file")
+    parser.add_argument("--output", help="burn: MP4 destination; defaults to subbed/<subtitle-stem>.480p.mp4")
+    parser.add_argument("--overwrite", action="store_true", help="burn: replace an existing output, never an input")
     parser.add_argument("--check-models", action="store_true", help="doctor: read-only OpenAI model access check")
     args = parser.parse_args()
-    configure(args.project, required=args.stage not in {"init", "doctor"})
+    if args.stage != "burn" and (args.subtitles or args.output or args.overwrite):
+        parser.error("--subtitles, --output and --overwrite are for the burn stage.")
+    configure(args.project, required=args.stage not in {"init", "doctor", "burn"} or bool(args.project and args.stage == "burn"))
+    if args.stage == "burn":
+        if not args.subtitles:
+            parser.error("burn requires --subtitles (ASS, SRT or VTT).")
+        from burn_subtitles import burn
+        burn(source_file(args.source), args.subtitles, CONFIG, args.output, args.overwrite)
+        return
     if args.stage == "init":
         if CONFIG_PATH.exists():
             parser.error("The local config already exists; edit it in place or choose another --project path.")

@@ -7,6 +7,7 @@ import json
 
 import subtitle as pipeline
 from subtitle import read_json, write_json, timestamp, ass_timestamp
+from burn_subtitles import mp4_boxes
 
 
 def require(condition, message):
@@ -41,20 +42,7 @@ def main(argv=None):
         require(a.split(",")[1:3] == [ass_timestamp(cue["start"]), ass_timestamp(cue["end"])], error)
 
     video = OUT / f"{stem}.jv.480p.mp4"
-    boxes, offset = [], 0
-    with video.open("rb") as stream:
-        while offset < video.stat().st_size:
-            stream.seek(offset)
-            header = stream.read(8)
-            require(len(header) == 8, "Truncated MP4 box header")
-            size = int.from_bytes(header[:4], "big")
-            boxes.append(header[4:8].decode("ascii"))
-            if size == 1:
-                size = int.from_bytes(stream.read(8), "big")
-            if size == 0:
-                break
-            require(size >= 8 and offset+size <= video.stat().st_size, "Invalid MP4 box size")
-            offset += size
+    boxes = mp4_boxes(video)
     require("moov" in boxes and "mdat" in boxes and boxes.index("moov") < boxes.index("mdat"), "MP4 must be fast-start")
     manifest = {"subtitle_text_and_timing_parity": True, "cue_count": len(cues), "mp4_faststart": True, "mp4_boxes": boxes, "files": {}}
     for path in sorted(OUT.glob(f"{stem}.*")):

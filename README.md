@@ -1,8 +1,46 @@
 # jp-jv-subber
 
-An agent-operated pipeline for subtitling Japanese tokusatsu in Javanese and exporting a compact 480p video with burned-in subtitles. It also produces editable SRT, VTT, ASS and a bilingual review table.
+[![Pipeline checks](https://github.com/asfarsadewa/jp-jv-subber/actions/workflows/checks.yml/badge.svg)](https://github.com/asfarsadewa/jp-jv-subber/actions/workflows/checks.yml)
+![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776ab?logo=python&logoColor=white)
+![Japanese to Javanese](https://img.shields.io/badge/Japanese-%E2%86%92%20Javanese-d47246)
+![480p hardsubs](https://img.shields.io/badge/480p-H.264%20hardsubs-315b54)
+
+**Japanese tokusatsu. Basa Jawa. Ready to watch.**
+
+An agent-operated pipeline that takes Japanese audio through transcript review, contextual Javanese translation and subtitle layout, then delivers a compact **480p MP4 with hardsubs**. Editable **SRT, VTT, ASS** and a bilingual review table come with it.
 
 Default language: everyday Javanese ngoko in Latin script, with polite speech where character relationships call for it. The original Japanese audio stays in the video.
+
+## See it: Denjin Zaborger
+
+[![Two actual Zaborger frames with burned-in Javanese subtitles: polite dialogue and an action call](docs/assets/zaborger-javanese.jpg)](docs/assets/zaborger-javanese.jpg)
+
+Actual frames from our completed episode 01 export, with the subtitles already burned into the picture. Click the image for full size.
+
+| Scene | Javanese subtitle |
+| --- | --- |
+| Polite dialogue · 04:07 | “Mboten nyana, sakulawarga nyambut kula.” |
+| Action call · 21:40 | “Pamungkas! Bumerang Pamotong!” |
+
+This episode produced **177 subtitle cues** and a **640 × 480 MP4 of about 89 MB**, retaining the Japanese audio. Translation received model-assisted source and translation review; native-speaker approval is still separate. The public repository contains this two-frame preview; the full episode, transcripts and subtitle files stay local.
+
+## Already have subtitles? Burn them in
+
+After installing the [dependencies below](#setup), use an existing **ASS, SRT or VTT** file:
+
+```sh
+python tools/subtitle.py burn --source "input/episode.mkv" --subtitles "subbed/episode-01.jv.ass"
+```
+
+That saves **`subbed/episode-01.jv.480p.mp4`**. No API keys, transcript or project initialization are needed. ASS styling and placement are retained; SRT/VTT use readable white text with a dark outline.
+
+Choose another destination or explicitly replace a previous export:
+
+```sh
+python tools/subtitle.py burn --source "input/episode.mkv" --subtitles "captions.jv.srt" --output "subbed/episode-01.jv.480p.mp4" --overwrite
+```
+
+Burn-in uses the supplied wording and timestamps as-is. It preserves display aspect ratio and frame rate, encodes H.264 with Japanese AAC audio, checks fast-start and decodes the complete result before saving the final file. Inputs are protected from replacement. Logs, verification and hashes live in ignored `work/burns/`. Use an optional `--project` to select local encoding/font settings.
 
 ## Start with an agent
 
@@ -14,6 +52,8 @@ review the uncertain dialogue, and save a verified 480p MP4 in subbed/.
 ```
 
 The local skill is [`.agents/skills/jp-jv-subber/SKILL.md`](.agents/skills/jp-jv-subber/SKILL.md). [AGENTS.md](AGENTS.md) routes agents to it; no global skill installation is needed. Other agents can read those same files directly.
+
+For subtitles that already exist, ask: “Use `$jp-jv-subber` to burn this ASS file into my video and save a verified 480p MP4 in `subbed/`.”
 
 ## Setup
 
@@ -54,13 +94,13 @@ Speaker labels are evidence about voices, not reliable character identities. ASR
 python tools/verify_project.py
 ```
 
-This runs unit checks and generates synthetic media to exercise extraction, exports, burn-in, 4:3/anamorphic 16:9 geometry, full decoding and previews. It does not transcribe or translate real audio. GitHub Actions runs the same offline checks and a secret scan.
+This runs unit checks and generates synthetic media to exercise extraction, exports, standalone ASS/SRT/VTT burn-in without a config, 4:3/anamorphic 16:9 geometry, full decoding and visible subtitle pixels. It does not transcribe or translate real audio. GitHub Actions runs the same offline checks and a secret scan.
 
 ## Public repository boundary
 
-Only code, prompts, the local skill, documentation, configuration templates and tests belong in Git. Episode media, transcripts, subtitles, frames, API receipts, local settings and credentials stay ignored. Paid stages send supplied audio and selected transcript/images to the configured providers; CI does not run those stages.
+Code, prompts, the local skill, documentation, configuration templates and tests belong in Git. The explicitly approved [Zaborger README preview](docs/assets/zaborger-javanese.jpg) is the sole media exception, allowed by exact path. Full episodes, transcripts, subtitle files, other frames, API receipts, local settings and credentials stay outside Git. Paid stages send supplied audio and selected transcript/images to the configured providers; CI does not run those stages.
 
-`python tools/public_audit.py` checks the tracked file set against this boundary. Follow [release checks](docs/release.md) before an authorized push. Source media and generated subtitles carry their own rights; this repository includes neither.
+`python tools/public_audit.py` checks the tracked file set against this boundary, including preview format, size and metadata. Follow [release checks](docs/release.md) before an authorized push. Source footage belongs to its respective rights holders; the README frames illustrate the subtitle output.
 
 ## API documentation
 
