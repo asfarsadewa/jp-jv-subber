@@ -1,0 +1,21 @@
+{
+  "series": "My tokusatsu series",
+  "episode": "01",
+  "slug": "episode-01",
+  "source": "",
+  "source_language": "ja",
+  "target_language": "jv",
+  "register": "Everyday standard Javanese ngoko in Latin script, with polite speech where the relationship warrants it. Avoid strong regional slang and unnecessary Indonesian vocabulary.",
+  "series_context": "",
+  "glossary": [],
+  "keyterms": [],
+  "music_ranges": [],
+  "transcription_model": "scribe_v2",
+  "crosscheck_model": "gpt-4o-transcribe",
+  "translation_model": "gpt-6-luna",
+  "review_model": "gpt-6.1-sol",
+  "reasoning_effort": "high",
+  "font_paths": {"regular": "", "bold": ""},
+  "subtitle": {"max_line_chars": 38, "max_lines": 2, "target_cps": 15, "max_cps": 20, "min_duration": 0.9, "max_duration": 6.5, "gap": 0.08},
+  "encode": {"height": 480, "codec": "libx264", "crf": 27, "preset": "slow", "audio_bitrate": "64k"}
+}
