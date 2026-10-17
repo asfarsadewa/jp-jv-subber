@@ -25,7 +25,7 @@ def validate_instructions():
             target = target.split("#", 1)[0]
             if not (doc.parent / target).resolve().exists():
                 raise ValueError(f"{doc.relative_to(ROOT)} links to a missing local file: {target}")
-    print("The project skill metadata and local documentation links passed.", flush=True)
+    print("Skill metadata and doc links: passed", flush=True)
 
 
 def unused_imports(path):
@@ -50,7 +50,7 @@ def main():
     env = {key: value for key, value in os.environ.items() if key not in {"OPENAI_API_KEY", "ELEVENLABS_API_KEY", "SUBBER_PROJECT"}}
     subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests"], cwd=ROOT, env=env, check=True)
     subprocess.run([sys.executable, "tools/smoke_test.py"], cwd=ROOT, env=env, check=True)
-    print("Offline project verification passed. The checks sent no provider requests.")
+    print("Offline verification: passed with no provider requests")
 
 
 if __name__ == "__main__":

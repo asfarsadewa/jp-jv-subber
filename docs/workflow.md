@@ -108,6 +108,8 @@ Existing outputs require `--overwrite`. Neither input can be the destination. A 
 
 Start with status. The tools reuse transcripts and content-hashed results. If an OpenAI background receipt has a response ID, the tool resumes the job through retrieval. Retrieval does not create another job. Completed result caches need no provider call.
 
+A code change can change a cache key. For example, the translation-review request no longer sends word indices. If you rerun review-translation on an older episode, the tool sends a new paid request. Layout and later stages read `translation-reviewed.json` directly. They do not need the review cache.
+
 A submitting receipt without a response ID has an unknown outcome. Inspect provider history and local evidence before you resubmit. A socket timeout does not prove failure. Do not delete or silently overwrite that receipt. When you confirm a definite rejection, archive its receipt under ignored work. Then correct the cause. Then rerun. Keep the record for provenance. Atomic receipts prevent two processes from claiming the same job.
 
 Background review can take several minutes. Keep response IDs and receipts so that a restart resumes the job. Stop on terminal errors, malformed output, missing/duplicate IDs or refusal. Then inspect the diagnostics.

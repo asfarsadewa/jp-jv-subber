@@ -157,7 +157,7 @@ def encode_video(source, subtitle, video, config, folder, original=None, overwri
             "-map_metadata", "-1", "-map_chapters", "-1", *metadata, "-metadata:s:a:0", "language=jpn",
             "-progress", str(folder / "encode-progress.txt"), "-stats_period", "10", "-nostats", str(partial)]
     log = folder / "encode.log"
-    print(f"The tool is burning {subtitle.name} into {video.name}.", flush=True)
+    print(f"Burning: {subtitle.name} -> {video.name}", flush=True)
     try:
         with log.open("w", encoding="utf-8") as stream:
             subprocess.run(args, cwd=folder, stderr=stream, check=True)
@@ -170,7 +170,7 @@ def encode_video(source, subtitle, video, config, folder, original=None, overwri
         raise RuntimeError(f"FFmpeg stopped with an error. Read {log}.") from error
     finally:
         partial.unlink(missing_ok=True)
-    print(f"The tool saved {video} ({video.stat().st_size / 1e6:.1f} MB).", flush=True)
+    print(f"Saved: {video} ({video.stat().st_size / 1e6:.1f} MB)", flush=True)
     return video
 
 
@@ -192,5 +192,5 @@ def burn(source, subtitle, config, output=None, overwrite=False):
     manifest = {"source": identity, "subtitle": {"path": str(subtitle), "sha256": digest}, "output": {"path": str(video), "bytes": video.stat().st_size, "sha256": output_digest},
                 "verification": "verification.json", "editorial_review": "The tool burned the supplied subtitles without changes. Burn-in does not translate or review the text."}
     (folder / "burn-manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"The tool saved burn-in evidence in {folder}.", flush=True)
+    print(f"Burn evidence: {folder}", flush=True)
     return video

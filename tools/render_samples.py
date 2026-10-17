@@ -37,7 +37,7 @@ def render(project):
             draw.text((x+8, y+482), f"Cue {cue['id']} / {timestamp(t)}", font=font, fill="white")
         target = folder / f"burned-samples-{sheet_number}.jpg"
         sheet.save(target, quality=92)
-        print(target)
+        print(f"Sample sheet: {target}")
 
 
 def main(argv=None):

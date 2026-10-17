@@ -80,7 +80,7 @@ def one_case(anamorphic=False):
         result = subprocess.run(command, env=env, capture_output=True, encoding="utf-8")
         if result.returncode:
             raise ValueError(f"The standalone {extension} burn failed:\n{result.stdout}\n{result.stderr}")
-        burn_jobs += [Path(line.removeprefix("The tool saved burn-in evidence in ").removesuffix(".")) for line in result.stdout.splitlines() if line.startswith("The tool saved burn-in evidence in ")]
+        burn_jobs += [Path(line.removeprefix("Burn evidence: ")) for line in result.stdout.splitlines() if line.startswith("Burn evidence: ")]
         if subtitle.read_bytes() != before:
             raise ValueError("Burning changed the original subtitle file.")
         if "title" in probe(output)["format"].get("tags", {}):
@@ -89,7 +89,7 @@ def one_case(anamorphic=False):
         p.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-ss", "1", "-i", output, "-frames:v", "1", preview], capture_output=True)
         if not has_subtitle_pixels(preview):
             raise ValueError(f"The standalone {extension} burn has no visible subtitle pixels.")
-        print(f"The standalone {extension.upper()} burn passed the decode check and the visible subtitle check.")
+        print(f"Standalone {extension.upper()} burn: decode and subtitle pixels passed")
     if len(burn_jobs) != 3:
         raise ValueError("The standalone burns did not report their evidence folders.")
     # A passing run leaves nothing behind. A failing run keeps its folder for diagnosis.
@@ -98,7 +98,7 @@ def one_case(anamorphic=False):
             raise ValueError(f"The burn evidence folder is outside work/burns: {job}")
         shutil.rmtree(job)
     shutil.rmtree(folder)
-    print(f"Offline integration passed for {'anamorphic 16:9' if anamorphic else '4:3'} video.")
+    print(f"Offline integration: passed ({'anamorphic 16:9' if anamorphic else '4:3'})")
 
 
 def main():

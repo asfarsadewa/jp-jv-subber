@@ -228,14 +228,14 @@ def prepare(project, source):
                 canvas.paste(im, (x, y))
             draw.text((x + 8, y + 242), f"{int(t)//60:02d}:{int(t)%60:02d}", fill="white", font=font)
         canvas.save(sheet, quality=88)
-    print(f"The tool prepared {float(info['format']['duration']):.2f} s of audio ({audio.stat().st_size / 1e6:.1f} MB).", flush=True)
+    print(f"Prepared: {float(info['format']['duration']):.2f} s of audio, {audio.stat().st_size / 1e6:.1f} MB", flush=True)
 
 
 def transcribe(project, source):
     prepare(project, source)
     target = project.work / "scribe.json"
     if target.exists():
-        print("The tool reuses the saved Scribe transcript.", flush=True)
+        print("Scribe: using the saved transcript", flush=True)
         return
     receipt = project.work / "scribe-request.json"
     ensure_unclaimed(receipt, "Scribe")
@@ -243,7 +243,7 @@ def transcribe(project, source):
     data = [("model_id", model), ("language_code", "ja"), ("diarize", "true"), ("timestamps_granularity", "word"), ("tag_audio_events", "true"), ("no_verbatim", "false")]
     data += [("keyterms", term) for term in project.config["keyterms"]]
     key = api_key("ELEVENLABS_API_KEY")
-    print("The tool is uploading the Japanese audio to ElevenLabs Scribe.", flush=True)
+    print("Scribe: uploading the Japanese audio", flush=True)
     with (project.work / "audio.flac").open("rb") as f:
         response = submit_once(receipt, "Scribe", lambda: requests.post(
             "https://api.elevenlabs.io/v1/speech-to-text", headers={"xi-api-key": key}, data=data,
@@ -252,7 +252,7 @@ def transcribe(project, source):
     write_json(target, result)
     write_json(receipt, {"status": "completed", "completed_at": time.time(), "model": model, "settings": data,
                          "request_id": response.headers.get("request-id"), "transcription_id": result.get("transcription_id")})
-    print(f"The tool saved {len(result.get('words', []))} timed tokens.", flush=True)
+    print(f"Scribe: {len(result.get('words', []))} timed tokens saved", flush=True)
 
 
 def segment(project):
@@ -298,7 +298,7 @@ def segment(project):
     write_json(project.work / "audio-events.json", events)
     transcript = "\n".join(f"{u['id']:03d} [{u['start']:.2f}-{u['end']:.2f}] {u['speaker']}: {u['ja']}" for u in utterances)
     (project.work / "japanese-transcript.txt").write_text(transcript, encoding="utf-8")
-    print(f"The tool segmented the transcript into {len(utterances)} utterances and {len(events)} audio events.", flush=True)
+    print(f"Segmented: {len(utterances)} utterances, {len(events)} audio events", flush=True)
 
 
 def crosscheck(project, source):
@@ -331,7 +331,7 @@ def crosscheck(project, source):
         result = {"start": begin, "end": begin + length, "model": config["crosscheck_model"], **r.json()}
         write_json(path, result)
         write_json(receipt, {"status": "completed", "request_id": r.headers.get("x-request-id")})
-        print(f"The tool checked {begin:.0f}-{begin + length:.0f} s with independent ASR.", flush=True)
+        print(f"Crosscheck: {begin:.0f}-{begin + length:.0f} s done", flush=True)
         return result
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -373,7 +373,7 @@ def llm(project, label, model, instructions, payload, schema, images=(), effort=
     prefix = folder / f"{label}-{digest}"
     result_path = prefix.with_suffix(".result.json")
     if result_path.exists():
-        print(f"The tool reuses the cached {label} result.", flush=True)
+        print(f"Cached: {label}", flush=True)
         return read_json(result_path)
     receipt = prefix.with_suffix(".receipt.json")
     headers = {"Authorization": "Bearer " + api_key("OPENAI_API_KEY")}
@@ -386,13 +386,13 @@ def llm(project, label, model, instructions, payload, schema, images=(), effort=
         response = submit_once(receipt, label, lambda: requests.post("https://api.openai.com/v1/responses", headers=headers, json=body, timeout=(30, 300)), model=model)
         data = response.json()
         write_json(receipt, {"id": data["id"], "status": data["status"], "model": model, "started_at": time.time()})
-    print(f"The {label} job on {model} is {data['status'].replace('_', ' ')}.", flush=True)
+    print(f"{label}: {model}, {data['status'].replace('_', ' ')}", flush=True)
     last_status = data["status"]
     while data["status"] in {"queued", "in_progress"}:
         time.sleep(8)
         data = fetch_response(data["id"], headers)
         if data["status"] != last_status:
-            print(f"The {label} job is {data['status'].replace('_', ' ')}.", flush=True)
+            print(f"{label}: {data['status'].replace('_', ' ')}", flush=True)
             last_status = data["status"]
     response_path = prefix.with_suffix(".response.json")
     write_json(response_path, data)
@@ -407,10 +407,10 @@ def llm(project, label, model, instructions, payload, schema, images=(), effort=
     except json.JSONDecodeError as error:
         raise RuntimeError(f"The model returned invalid JSON for {label}. Read {response_path.name}.") from error
     write_json(result_path, parsed)
-    print(f"The tool saved the {label} result.", flush=True)
+    print(f"{label}: result saved", flush=True)
     tokens = data.get("usage", {}).get("total_tokens")
     if tokens is not None:
-        print(f"The {label} job used {tokens} tokens.", flush=True)
+        print(f"{label}: {tokens} tokens", flush=True)
     return parsed
 
 
@@ -703,7 +703,7 @@ def export_subtitles(project, cues, units, translations):
                 " | ".join(t["uncertainty"] for t in texts if t["uncertainty"]),
                 " | ".join(t["change_reason"] for t in texts if t["change_reason"]),
             ])
-    print(f"The tool exported {len(cues)} subtitle cues.", flush=True)
+    print(f"Exported: {len(cues)} subtitle cues", flush=True)
 
 
 def validate_cues(project, cues):
@@ -734,7 +734,7 @@ def validate_cues(project, cues):
             issues.append({"cue": cue["id"], "source_ids": cue["source_ids"], "cps": round(cps, 1), "duration": round(span, 2), "issues": errors, "text": text})
         previous = cue["end"]
     write_json(project.work / "subtitle-qa.json", {"cue_count": len(cues), "issues": issues})
-    print(f"Subtitle QA found {len(issues)} cues that need attention. Read subtitle-qa.json for details.", flush=True)
+    print(f"Subtitle QA: {len(issues)} flagged cues (subtitle-qa.json)", flush=True)
     return issues
 
 
@@ -859,7 +859,7 @@ def main():
         settings = merge_config({**project.config, **{k: getattr(args, k) for k in ["slug", "series", "episode", "source"] if getattr(args, k) is not None}})
         project.config_path.parent.mkdir(parents=True, exist_ok=True)
         write_json(project.config_path, settings)
-        print(f"The tool created the local config at {project.config_path}.")
+        print(f"Created config: {project.config_path}")
         return
     if args.stage == "doctor":
         if not doctor(project, args.check_models)["ready"]:
